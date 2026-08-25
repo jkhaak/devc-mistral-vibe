@@ -1,0 +1,145 @@
+name: Build and Push
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/jkhaak/devc-mistral-vibe
+
+jobs:
+  generate-tags:
+    runs-on: ubuntu-24.04
+    outputs:
+      date_tag: ${{ steps.date_tag.outputs.tag }}
+      sha_tag: sha-${{ github.sha }}
+
+    steps:
+      - name: Generate date tag
+        id: date_tag
+        run: |
+          DATE=$(date -u +%Y%m%d)
+          echo "date=${DATE}" >> $GITHUB_OUTPUT
+
+          TOKEN=$(curl -s \
+            -u "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+            "https://ghcr.io/token?scope=repository:jkhaak/devc-mistral-vibe:pull&service=ghcr.io" \
+            | jq -r ".token")
+
+          # Query ghcr.io for existing tags matching today's date
+          RESPONSE=$(curl -s \
+            -H "Authorization: Bearer ${TOKEN}" \
+            "https://ghcr.io/v2/jkhaak/devc-mistral-vibe/tags/list")
+
+          # Find highest patch number for today, increment by 1
+          PATCH=$(echo "$RESPONSE" | \
+            jq -r --arg date "$DATE" \
+            '[.tags // [] | .[] | select(startswith($date)) |
+            split(".")[1] | tonumber] | max // -1 | . + 1')
+
+          echo "tag=${DATE}.${PATCH}" >> $GITHUB_OUTPUT
+
+  build:
+    needs: generate-tags
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: amd64
+            runner: ubuntu-24.04
+          - platform: arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ steps.date_tag.outputs.tag }}
+            type=sha,prefix=sha-
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Containerfile
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:latest-${{ matrix.platform }}
+          platforms: linux/${{ matrix.platform }}
+
+      - name: Scan image with Grype
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        id: grype
+        with:
+          image: ${{ env.IMAGE_NAME }}:latest
+          fail-build: false
+          severity-cutoff: critical
+          output-format: sarif
+
+      - name: Upload Grype SARIF report
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          sarif_file: ${{ steps.grype.outputs.sarif }}
+
+      - name: Generate SBOM with Syft
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ${{ env.IMAGE_NAME }}:latest
+          artifact-name: sbom-devc-mistral-vibe.spdx.json
+          output-file: sbom-devc-mistral-vibe.spdx.json
+          format: spdx-json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-devc-mistral-vibe
+          path: sbom-devc-mistral-vibe.spdx.json
+          retention-days: 90
+
+  merge-manifest:
+    needs: [generate-tags, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ env.IMAGE_NAME }}:latest \
+            --tag ${{ env.IMAGE_NAME }}:${{ needs.generate-tags.outputs.date_tag }} \
+            --tag ${{ env.IMAGE_NAME }}:${{ needs.generate-tags.outputs.sha_tag }} \
+            ${{ env.IMAGE_NAME }}:latest-amd64 \
+            ${{ env.IMAGE_NAME }}:latest-arm64 

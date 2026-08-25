@@ -1,5 +1,15 @@
 *
 
 !.gitignore
+!Containerfile
 !LICENCE
+!README.md
+!entrypoint.agent.sh
 !justfile
+!vibe.config.toml
+!vibe.trusted_folders.toml
+
+!.github/
+!.github/dependabot.yml
+!.github/workflows/
+!.github/workflows/build.yml
