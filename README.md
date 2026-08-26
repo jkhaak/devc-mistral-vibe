@@ -35,6 +35,17 @@ Drop additional entrypoint scripts into `/entrypoint.d` to extend startup
 behaviour. Scripts are sourced in lexicographic order — prefix with a number
 above `20` to run after the agent setup.
 
+## Container registry
+
+Images are published to the GitHub Container Registry and can be browsed at: https://github.com/jkhaak/devc-base/pkgs/container/devc-mistral-vibe
+
+Built daily for `amd64` and `arm64` architectures.
+
+Available tags:
+- `latest` — most recent build
+- `YYYmmDD.patch` — date versioned build, e.g. `20260826.0`
+- `sha-<commit>` — build tied to a specific commit
+
 ## LICENCE
 
 Copyright Jani Haakana, 2026, licenced under the EUPL.
