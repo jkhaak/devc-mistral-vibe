@@ -99,7 +99,7 @@ jobs:
         id: sbom
         with:
           image: ${{ env.IMAGE_NAME }}:latest-${{ matrix.platform }}
-          artifact-name: sbom-devc-${{ matrix.platform }}.spdx.json
+          artifact-name: "${{ github.event.repository.name }}-${{ matrix.platform }}-sbom.spdx.json"
           output-file: "${{ github.event.repository.name }}-${{ matrix.platform }}-sbom.spdx.json"
           format: spdx-json
 
