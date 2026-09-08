@@ -4,7 +4,10 @@ LABEL org.opencontainers.image.source="https://github.com/jkhaak/devc-mistral-vi
 LABEL org.opencontainers.image.description="AI agent layer with mistral-vibe"
 
 # Install uv and python
-RUN brew install uv python
+RUN brew update \
+    && brew install -y uv python \
+    && brew cleanup --prune=all \
+    && rm -rf "$(brew --cache)"
 
 # Install mistral-vibe
 RUN uv tool install mistral-vibe
