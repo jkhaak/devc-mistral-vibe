@@ -10,7 +10,9 @@ RUN brew update \
     && rm -rf "$(brew --cache)"
 
 # Install mistral-vibe
-RUN uv tool install mistral-vibe
+# Pin Python 3.13: miniaudio (a mistral-vibe dependency) has no
+# c4315 wheels yet and its source build requires a C++ compiler.
+RUN uv tool install --python 3.14 mistral-vibe
 
 COPY --chown=dev:dev vibe.config.toml /home/dev/.vibe/config.toml
 COPY --chown=dev:dev vibe.trusted_folders.toml /home/dev/.vibe/trusted_folders.toml
