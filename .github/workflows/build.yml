@@ -42,7 +42,7 @@ jobs:
           PATCH=$(echo "$RESPONSE" | \
             jq -r --arg date "$DATE" \
             '[.tags // [] | .[] | select(startswith($date)) |
-            split(".")[1] | tonumber] | max // -1 | . + 1')
+            split(".")[1] | tonumber] | max // 0 | . + 1')
 
           echo "tag=${DATE}.${PATCH}" >> $GITHUB_OUTPUT
 
